@@ -13,8 +13,6 @@
 
 #include <ngraph/ngraph.hpp>
 
-using namespace InferenceEngine;
-
 #define SSD_EMPTY_DETECTIONS_INDICATOR -1.0
 
 using namespace detection;
@@ -57,67 +55,101 @@ void FaceDetection::submitRequest() {
 
 void FaceDetection::enqueue(const cv::Mat &frame) {
     if (!request) {
-        request = std::make_shared<InferenceEngine::InferRequest>(net_.CreateInferRequest());
+        // request = std::make_shared<InferenceEngine::InferRequest>(net_.CreateInferRequest());
+        request = net_.create_infer_request();
     }
 
     width_ = static_cast<float>(frame.cols);
     height_ = static_cast<float>(frame.rows);
 
-    Blob::Ptr inputBlob = request->GetBlob(input_name_);
+    // InferenceEngine::Blob::Ptr inputBlob = request->GetBlob(input_name_);
+    ov::runtime::Tensor inputTensor = request.get_input_tensor();// ??? input_name_ ???
 
-    matU8ToBlob<uint8_t>(frame, inputBlob);
+    // matToBlob(frame, inputBlob);
+    matToTensor(frame, inputTensor);
 
     enqueued_frames_ = 1;
 }
 
 FaceDetection::FaceDetection(const DetectorConfig& config) :
         BaseCnnDetection(config.is_async), config_(config) {
-    topoName = "face detector";
-    auto cnnNetwork = config.ie.ReadNetwork(config.path_to_model);
+    topoName = "Face Detection";
+    // auto cnnNetwork = config.ie.ReadNetwork(config.path_to_model);
+    auto cnnNetwork = config.ie.read_model(config.path_to_model);
 
-    InputsDataMap inputInfo(cnnNetwork.getInputsInfo());
+    // InferenceEngine::InputsDataMap inputInfo(cnnNetwork.getInputsInfo());
+    ov::OutputVector inputInfo = cnnNetwork->inputs();
     if (inputInfo.size() != 1) {
         throw std::runtime_error("Face Detection network should have only one input");
     }
-    InputInfo::Ptr inputInfoFirst = inputInfo.begin()->second;
-    inputInfoFirst->setPrecision(Precision::U8);
-    inputInfoFirst->getInputData()->setLayout(Layout::NCHW);
 
-    SizeVector input_dims = inputInfoFirst->getInputData()->getTensorDesc().getDims();
-    input_dims[2] = config_.input_h;
-    input_dims[3] = config_.input_w;
-    std::map<std::string, SizeVector> input_shapes;
-    input_shapes[inputInfo.begin()->first] = input_dims;
-    cnnNetwork.reshape(input_shapes);
+    // InferenceEngine::InputInfo::Ptr inputInfoFirst = inputInfo.begin()->second;
+    // inputInfoFirst->setPrecision(InferenceEngine::Precision::U8);
+    // inputInfoFirst->getInputData()->setLayout(InferenceEngine::Layout::NCHW);
 
-    OutputsDataMap outputInfo(cnnNetwork.getOutputsInfo());
-    if (outputInfo.size() != 1) {
-        throw std::runtime_error("Face Detection network should have only one output");
-    }
-    DataPtr& _output = outputInfo.begin()->second;
-    output_name_ = outputInfo.begin()->first;
+    // InferenceEngine::SizeVector input_dims = inputInfoFirst->getInputData()->getTensorDesc().getDims();
+    // input_dims[2] = config_.input_h;
+    // input_dims[3] = config_.input_w;
+    // std::map<std::string, InferenceEngine::SizeVector> input_shapes;
+    // input_shapes[inputInfo.begin()->first] = input_dims;
+    // cnnNetwork.reshape(input_shapes);
 
-    const SizeVector outputDims = _output->getTensorDesc().getDims();
-    max_detections_count_ = outputDims[2];
-    object_size_ = outputDims[3];
-    if (object_size_ != 7) {
-        throw std::runtime_error("Face Detection network output layer should have 7 as a last dimension");
-    }
-    if (outputDims.size() != 4) {
-        throw std::runtime_error("Face Detection network output should have 4 dimensions, but had " +
-                              std::to_string(outputDims.size()));
-    }
-    _output->setPrecision(Precision::FP32);
-    _output->setLayout(TensorDesc::getLayoutByDims(_output->getDims()));
+    // InferenceEngine::OutputsDataMap outputInfo(cnnNetwork.getOutputsInfo());
+    // if (outputInfo.size() != 1) {
+    //     throw std::runtime_error("Face Detection network should have only one output");
+    // }
+    // InferenceEngine::DataPtr& _output = outputInfo.begin()->second;
+    // output_name_ = outputInfo.begin()->first;
 
-    input_name_ = inputInfo.begin()->first;
-    net_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName);
+    // const InferenceEngine::SizeVector outputDims = _output->getTensorDesc().getDims();
+    // max_detections_count_ = outputDims[2];
+    // object_size_ = outputDims[3];
+    // if (object_size_ != 7) {
+    //     throw std::runtime_error("Face Detection network output layer should have 7 as a last dimension");
+    // }
+    // if (outputDims.size() != 4) {
+    //     throw std::runtime_error("Face Detection network output should have 4 dimensions, but had " +
+    //                           std::to_string(outputDims.size()));
+    // }
+    // _output->setPrecision(InferenceEngine::Precision::FP32);
+    // _output->setLayout(InferenceEngine::TensorDesc::getLayoutByDims(_output->getDims()));
+
+    // input_name_ = inputInfo.begin()->first;
+    // net_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName);
+
+    input_name_ = cnnNetwork->input().get_any_name();
+    ov::OutputVector outputs = cnnNetwork->outputs();
+    ov::Shape input_shape = cnnNetwork->input().get_shape();
+    cnnNetwork->reshape({ {cnnNetwork->input().get_any_name(), input_shape} });
+    std::string outputName = cnnNetwork->output().get_any_name();
+
+    // cnnNetwork = ov::preprocess::PrePostProcessor().
+    //           input(ov::preprocess::InputInfo().
+    //               tensor(ov::preprocess::InputTensorInfo().
+    //                 set_element_type(ov::element::u8).
+    //                 set_layout({"NCHW"})));
+
+    auto prepostprocessor = ov::preprocess::PrePostProcessor().
+              input(ov::preprocess::InputInfo().
+                  tensor(ov::preprocess::InputTensorInfo().
+                    set_element_type(ov::element::u8).
+                    set_layout({"NCHW"}))).
+              output(ov::preprocess::OutputInfo().
+                  tensor(ov::preprocess::OutputTensorInfo().
+                    set_element_type(ov::element::f32)));
+
+    cnnNetwork = prepostprocessor.build(cnnNetwork);
+    net_ = config_.ie.compile_model(cnnNetwork, config_.deviceName);
+
+    logExecNetworkInfo(net_, config_.path_to_model, config_.deviceName, topoName);
 }
 
 DetectedObjects FaceDetection::fetchResults() {
     DetectedObjects results;
-    LockedMemory<const void> outputMapped = as<MemoryBlob>(request->GetBlob(output_name_))->rmap();
-    const float *data = outputMapped.as<float *>();
+    // InferenceEngine::LockedMemory<const void> outputMapped =
+    //     InferenceEngine::as<InferenceEngine::MemoryBlob>(request->GetBlob(output_name_))->rmap();
+    // const float *data = outputMapped.as<float *>();
+    const float* data = request.get_output_tensor().data<float>();
 
     for (int det_id = 0; det_id < max_detections_count_; ++det_id) {
         const int start_pos = det_id * object_size_;

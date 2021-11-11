@@ -14,6 +14,9 @@
 
 #include <inference_engine.hpp>
 
+#include "openvino/core/layout.hpp"
+#include "openvino/openvino.hpp"
+
 /**
 * @brief Base class of config for network
 */
@@ -27,7 +30,8 @@ struct CnnConfig {
     int max_batch_size{1};
 
     /** @brief Inference Engine */
-    InferenceEngine::Core ie;
+    // InferenceEngine::Core ie;
+    ov::runtime::Core ie;
     /** @brief Device name */
     std::string deviceName;
 };
@@ -131,7 +135,8 @@ public:
 
 class BaseCnnDetection : public AsyncAlgorithm {
 protected:
-    InferenceEngine::InferRequest::Ptr request;
+    // InferenceEngine::InferRequest::Ptr request;
+    ov::runtime::InferRequest request;
     const bool isAsync;
     std::string topoName;
 
@@ -140,17 +145,21 @@ public:
                               isAsync(isAsync) {}
 
     void submitRequest() override {
-        if (request == nullptr) return;
+        // if (request == nullptr) return;
+        if (request) return;
         if (isAsync) {
-            request->StartAsync();
+            // request->StartAsync();
+            request.start_async();
         } else {
-            request->Infer();
+            // request->Infer();
+            request.infer();
         }
     }
 
     void wait() override {
         if (!request || !isAsync) return;
-        request->Wait(InferenceEngine::InferRequest::WaitMode::RESULT_READY);
+        // request->Wait(InferenceEngine::InferRequest::WaitMode::RESULT_READY);
+        request.wait();
     }
 
     void printPerformanceCounts(const std::string &fullDeviceName) override {
