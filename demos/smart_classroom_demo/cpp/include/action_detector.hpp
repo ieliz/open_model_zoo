@@ -130,7 +130,7 @@ private:
     std::string input_name_;
     // InferenceEngine::BlobMap outputs_;
     // ov::Function::get_results outputs_;
-    ov::ResultVector outputs_;
+    std::map<ov::runtime::Tensor, std::string> outputs_;
 
     int enqueued_frames_ = 0;
     float width_ = 0;

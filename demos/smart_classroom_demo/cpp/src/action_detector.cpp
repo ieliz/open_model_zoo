@@ -56,9 +56,9 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
     auto network = config.ie.read_model(config.path_to_model);
 
     // network.setBatchSize(config.max_batch_size);
-    const ov::Layout layout_nhwc{ "NHWC" };
+    const ov::Layout layout_nchw{ "NCHW" };
     ov::Shape input_shape = network->input().get_shape();
-    input_shape[ov::layout::batch(layout_nhwc)] = 1;
+    input_shape[ov::layout::batch(layout_nchw)] = 1;
     network->reshape({ {network->input().get_any_name(), input_shape} });
 
     // InferenceEngine::InputsDataMap inputInfo(network.getInputsInfo());
