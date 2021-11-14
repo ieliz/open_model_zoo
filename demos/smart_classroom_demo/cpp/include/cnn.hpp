@@ -72,7 +72,7 @@ protected:
    */
     void Infer(const cv::Mat& frame,
             //    const std::function<void(const InferenceEngine::BlobMap&, size_t)>& results_fetcher) const;
-               const std::function<void(const std::map<ov::runtime::Tensor, std::string>&, size_t)>& results_fetcher) const;
+               const std::function<void(const std::map<std::string, ov::runtime::Tensor>&, size_t)>& results_fetcher) const;
 
     /**
    * @brief Run network in batch mode
@@ -81,7 +81,7 @@ protected:
    * @param results_fetcher Callback to fetch inference results
    */
     void InferBatch(const std::vector<cv::Mat>& frames,
-                    const std::function<void(const std::map<ov::runtime::Tensor, std::string>&, size_t)>& results_fetcher) const;
+                    const std::function<void(const std::map<std::string, ov::runtime::Tensor>&, size_t)>& results_fetcher) const;
 
     /** @brief Config */
     Config config_;
@@ -141,7 +141,8 @@ public:
 class BaseCnnDetection : public AsyncAlgorithm {
 protected:
     // InferenceEngine::InferRequest::Ptr request;
-    ov::runtime::InferRequest request;
+    std::shared_ptr<ov::runtime::InferRequest> request;
+    // std::shared_ptr<ov::runtime::InferRequest> request;
     const bool isAsync;
     std::string topoName;
 
@@ -151,20 +152,20 @@ public:
 
     void submitRequest() override {
         // if (request == nullptr) return;
-        if (request) return;
+        if (request == nullptr) return;
         if (isAsync) {
             // request->StartAsync();
-            request.start_async();
+            request->start_async();
         } else {
             // request->Infer();
-            request.infer();
+            request->infer();
         }
     }
 
     void wait() override {
         if (!request || !isAsync) return;
         // request->Wait(InferenceEngine::InferRequest::WaitMode::RESULT_READY);
-        request.wait();
+        request->wait();
     }
 
     void printPerformanceCounts(const std::string &fullDeviceName) override {

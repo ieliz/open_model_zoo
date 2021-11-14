@@ -32,17 +32,17 @@ void ActionDetection::submitRequest() {
 }
 
 void ActionDetection::enqueue(const cv::Mat &frame) {
-    if (!request) {
+    if (request == nullptr) {
         // Old API replaced
         // request = std::make_shared<InferenceEngine::InferRequest>(net_.CreateInferRequest());
-        request = net_.create_infer_request();
+        request = std::make_shared<ov::runtime::InferRequest>(net_.create_infer_request());
     }
 
     width_ = static_cast<float>(frame.cols);
     height_ = static_cast<float>(frame.rows);
 
     // InferenceEngine::Blob::Ptr inputBlob = request->GetBlob(input_name_);
-    ov::runtime::Tensor input_tensor = request.get_tensor(input_name_);
+    ov::runtime::Tensor input_tensor = request->get_tensor(input_name_);
 
     // matToBlob(frame, inputBlob);
     matToTensor(frame, input_tensor);
@@ -58,7 +58,7 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
     // network.setBatchSize(config.max_batch_size);
     const ov::Layout layout_nchw{ "NCHW" };
     ov::Shape input_shape = network->input().get_shape();
-    input_shape[ov::layout::batch(layout_nchw)] = 1;
+    input_shape[ov::layout::batch(layout_nchw)] = config.max_batch_size;
     network->reshape({ {network->input().get_any_name(), input_shape} });
 
     // InferenceEngine::InputsDataMap inputInfo(network.getInputsInfo());
@@ -88,9 +88,10 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
 // ???
     input_name_ = network->input().get_any_name();
     ov::OutputVector outputs = network->outputs();
-    network_input_size_.height = network->output().get_shape()[2];
-    network_input_size_.width = network->output().get_shape()[3];
-    std::string outputName = network->output().get_any_name();
+    std::cout << "ac_det:" << outputs.size() << std::endl;
+    network_input_size_.height = network->input().get_shape()[2];
+    network_input_size_.width = network->input().get_shape()[3];
+    // std::string outputName = network->input().get_any_name();
 
     // network = ov::preprocess::PrePostProcessor().
     //           input(ov::preprocess::InputInfo().
@@ -142,7 +143,7 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
             glob_anchor_names_.push_back(glob_anchor_name);
 
             // const auto anchor_dims = outputInfo[glob_anchor_name]->getDims();// ???
-            const auto anchor_dims = request.get_tensor(glob_anchor_name).get_shape();
+            const auto anchor_dims = request->get_tensor(glob_anchor_name).get_shape();
             anchor_height = new_network_ ? anchor_dims[2] : anchor_dims[1];
             anchor_width = new_network_ ? anchor_dims[3] : anchor_dims[2];
             std::size_t action_dimension_idx = new_network_ ? 1 : 3;
@@ -184,18 +185,18 @@ DetectedActions ActionDetection::fetchResults() {
     // const cv::Mat loc_out(ieSizeToVector(request->GetBlob(loc_blob_name)->getTensorDesc().getDims()),
     //                       CV_32F, locBlobMapped.as<float*>());
 
-    const cv::Mat loc_out(request.get_tensor(loc_blob_name).get_shape()[2],
-                          request.get_tensor(loc_blob_name).get_shape()[3], CV_32F,
-                          request.get_tensor(loc_blob_name).data());
+    const cv::Mat loc_out(request->get_tensor(loc_blob_name).get_shape()[2],
+                          request->get_tensor(loc_blob_name).get_shape()[3], CV_32F,
+                          request->get_tensor(loc_blob_name).data());
 
     // InferenceEngine::LockedMemory<const void> detConfBlobMapped =
     //     InferenceEngine::as<InferenceEngine::MemoryBlob>(request->GetBlob(det_conf_blob_name))->rmap();
     // const cv::Mat main_conf_out(ieSizeToVector(request->GetBlob(det_conf_blob_name)->getTensorDesc().getDims()),
     //                             CV_32F, detConfBlobMapped.as<float*>());
 
-    const cv::Mat main_conf_out(request.get_tensor(det_conf_blob_name).get_shape()[2],
-                                request.get_tensor(det_conf_blob_name).get_shape()[3], CV_32F,
-                                request.get_tensor(det_conf_blob_name).data());
+    const cv::Mat main_conf_out(request->get_tensor(det_conf_blob_name).get_shape()[2],
+                                request->get_tensor(det_conf_blob_name).get_shape()[3], CV_32F,
+                                request->get_tensor(det_conf_blob_name).data());
 
     // std::vector<InferenceEngine::LockedMemory<const void>> blobsMapped;
     // std::vector<cv::Mat> add_conf_out;
@@ -209,9 +210,9 @@ DetectedActions ActionDetection::fetchResults() {
     std::vector<cv::Mat> add_conf_out;
     for (int glob_anchor_id = 0; glob_anchor_id < num_glob_anchors_; ++glob_anchor_id) {
         const auto& blob_name = glob_anchor_names_[glob_anchor_id];
-        add_conf_out.emplace_back(request.get_tensor(blob_name).get_shape()[2],
-                                  request.get_tensor(blob_name).get_shape()[3], CV_32F,
-                                  request.get_tensor(blob_name).data());
+        add_conf_out.emplace_back(request->get_tensor(blob_name).get_shape()[2],
+                                  request->get_tensor(blob_name).get_shape()[3], CV_32F,
+                                  request->get_tensor(blob_name).data());
     }
 
     /** Parse detections **/
@@ -226,9 +227,9 @@ DetectedActions ActionDetection::fetchResults() {
     // const cv::Mat priorbox_out = cv::Mat(ieSizeToVector(request->
     //                                      GetBlob(config_.old_priorbox_blob_name)->getTensorDesc().getDims()), CV_32F,
     //                                      priorboxOutBlobMapped.as<float*>());
-    const cv::Mat priorbox_out(request.get_tensor(config_.old_priorbox_blob_name).get_shape()[2],
-                               request.get_tensor(config_.old_priorbox_blob_name).get_shape()[3], CV_32F,
-                               request.get_tensor(config_.old_priorbox_blob_name).data());
+    const cv::Mat priorbox_out(request->get_tensor(config_.old_priorbox_blob_name).get_shape()[2],
+                               request->get_tensor(config_.old_priorbox_blob_name).get_shape()[3], CV_32F,
+                               request->get_tensor(config_.old_priorbox_blob_name).data());
     return GetDetections(loc_out, main_conf_out, priorbox_out, add_conf_out,
                          cv::Size(static_cast<int>(width_), static_cast<int>(height_)));
 }

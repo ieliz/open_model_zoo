@@ -54,16 +54,16 @@ void FaceDetection::submitRequest() {
 }
 
 void FaceDetection::enqueue(const cv::Mat &frame) {
-    if (!request) {
+    if (request == nullptr) {
         // request = std::make_shared<InferenceEngine::InferRequest>(net_.CreateInferRequest());
-        request = net_.create_infer_request();
+        request = std::make_shared<ov::runtime::InferRequest>(net_.create_infer_request());
     }
 
     width_ = static_cast<float>(frame.cols);
     height_ = static_cast<float>(frame.rows);
 
     // InferenceEngine::Blob::Ptr inputBlob = request->GetBlob(input_name_);
-    ov::runtime::Tensor inputTensor = request.get_input_tensor();// ??? input_name_ ???
+    ov::runtime::Tensor inputTensor = request->get_input_tensor();// ??? input_name_ ???
 
     // matToBlob(frame, inputBlob);
     matToTensor(frame, inputTensor);
@@ -149,7 +149,7 @@ DetectedObjects FaceDetection::fetchResults() {
     // InferenceEngine::LockedMemory<const void> outputMapped =
     //     InferenceEngine::as<InferenceEngine::MemoryBlob>(request->GetBlob(output_name_))->rmap();
     // const float *data = outputMapped.as<float *>();
-    const float* data = request.get_output_tensor().data<float>();
+    const float* data = request->get_output_tensor().data<float>();
 
     for (int det_id = 0; det_id < max_detections_count_; ++det_id) {
         const int start_pos = det_id * object_size_;

@@ -63,6 +63,7 @@ void CnnDLSDKBase::Load() {
     try {
         // executable_network_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName);
         executable_network_ = config_.ie.compile_model(cnnNetwork, config_.deviceName);
+    // } catch (const InferenceEngine::Exception&) {  // in case the model does not work with dynamic batch
     } catch (const ov::Exception&) {
         // cnnNetwork.setBatchSize(1);
         // executable_network_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName,
@@ -81,7 +82,7 @@ void CnnDLSDKBase::Load() {
 void CnnDLSDKBase::InferBatch(
         const std::vector<cv::Mat>& frames,
         // const std::function<void(const InferenceEngine::BlobMap&, size_t)>& fetch_results) const {
-        const std::function<void(const std::map<ov::runtime::Tensor, std::string>&, size_t)>& fetch_results) const {
+        const std::function<void(const std::map<std::string, ov::runtime::Tensor>&, size_t)>& fetch_results) const {
     // InferenceEngine::Blob::Ptr input = infer_request_.GetBlob(input_blob_name_);
     ov::runtime::Tensor input = infer_request_.get_tensor(input_blob_name_);
     // const size_t batch_size = input->getTensorDesc().getDims()[0];
@@ -101,7 +102,7 @@ void CnnDLSDKBase::InferBatch(
         infer_request_.infer();
 
         // InferenceEngine::BlobMap blobs;
-        std::map<ov::runtime::Tensor, std::string> blobs;// ???
+        std::map<std::string, ov::runtime::Tensor> blobs;// ???
 
         for (const auto& name : output_blobs_names_)  {
             // blobs[name] = infer_request_.GetBlob(name);
@@ -117,7 +118,7 @@ void CnnDLSDKBase::PrintPerformanceCounts(std::string fullDeviceName) const {
 }
 
 void CnnDLSDKBase::Infer(const cv::Mat& frame,
-                         const std::function<void(const std::map<ov::runtime::Tensor, std::string>&, size_t)>& fetch_results) const {
+                         const std::function<void(const std::map<std::string, ov::runtime::Tensor>&, size_t)>& fetch_results) const {
     InferBatch({frame}, fetch_results);
 }
 
@@ -143,7 +144,7 @@ void VectorCNN::Compute(const std::vector<cv::Mat>& images, std::vector<cv::Mat>
     }
     vectors->clear();
     // auto results_fetcher = [vectors, outp_shape](const InferenceEngine::BlobMap& outputs, size_t batch_size) {
-    auto results_fetcher = [vectors, outp_shape](const std::map<ov::runtime::Tensor, std::string>& outputs, size_t batch_size) {
+    auto results_fetcher = [vectors, outp_shape](const std::map<std::string, ov::runtime::Tensor>& outputs, size_t batch_size) {
         for (auto&& item : outputs) {
             // InferenceEngine::Blob::Ptr blob = item.second;
             ov::runtime::Tensor blob = item.second;

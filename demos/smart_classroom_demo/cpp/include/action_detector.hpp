@@ -129,8 +129,7 @@ private:
     ov::runtime::ExecutableNetwork net_;
     std::string input_name_;
     // InferenceEngine::BlobMap outputs_;
-    // ov::Function::get_results outputs_;
-    std::map<ov::runtime::Tensor, std::string> outputs_;
+    std::map<std::string, ov::runtime::Tensor> outputs_;
 
     int enqueued_frames_ = 0;
     float width_ = 0;
