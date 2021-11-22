@@ -48,7 +48,7 @@ void CnnDLSDKBase::Load() {
     //                         set_element_type(ov::element::u8).
     //                         set_layout({"NCHW"})));
     // input_blob_name_ = cnnNetwork->input().get_any_name();
-
+    std::cout << "ppp_cnn" << std::endl;
     ov::preprocess::PrePostProcessor proc(cnnNetwork);
     ov::preprocess::InputInfo& input_info = proc.input();
     input_info.tensor().set_element_type(ov::element::f32).set_layout({"NCHW"});

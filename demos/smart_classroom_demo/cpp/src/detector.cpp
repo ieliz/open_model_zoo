@@ -95,8 +95,9 @@ FaceDetection::FaceDetection(const DetectorConfig& config) :
     // std::map<std::string, InferenceEngine::SizeVector> input_shapes;
     // input_shapes[inputInfo.begin()->first] = input_dims;
     // cnnNetwork.reshape(input_shapes);
-
+    std::cout << "before prepostproc" << std::endl;
     ov::preprocess::PrePostProcessor proc(cnnNetwork);
+    std::cout << "after prepostproc" << std::endl;
     ov::preprocess::InputInfo& input_info = proc.input();
     input_info.tensor().set_element_type(ov::element::u8).set_layout({ "NCHW" });
 
