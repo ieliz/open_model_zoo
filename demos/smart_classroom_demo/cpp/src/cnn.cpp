@@ -15,6 +15,9 @@
 
 #include <map>
 
+#include "openvino/core/layout.hpp"
+#include "openvino/openvino.hpp"
+
 CnnDLSDKBase::CnnDLSDKBase(const Config& config) : config_(config) {}
 
 void CnnDLSDKBase::Load() {
@@ -27,7 +30,6 @@ void CnnDLSDKBase::Load() {
         // cnnNetwork.setBatchSize(config_.max_batch_size);
         const ov::Layout layout_nchw{"NCHW"};
         ov::Shape input_shape = cnnNetwork->input().get_shape();
-        // input_shape[ov::layout::batch(layout_nchw)] = config_.max_batch_size; //??? layout_nhwc
         input_shape[0] = config_.max_batch_size;
         cnnNetwork->reshape({{cnnNetwork->input().get_any_name(), input_shape}});
 
@@ -40,25 +42,23 @@ void CnnDLSDKBase::Load() {
     // in.begin()->second->setPrecision(InferenceEngine::Precision::U8);
     // in.begin()->second->setLayout(InferenceEngine::Layout::NCHW);
     // input_blob_name_ = in.begin()->first;
-    auto prepostprocessor = ov::preprocess::PrePostProcessor().
-                    input(ov::preprocess::InputInfo().
-                        tensor(ov::preprocess::InputTensorInfo().
-                            set_element_type(ov::element::u8).
-                            set_layout({"NCHW"})));
-    input_blob_name_ = cnnNetwork->input().get_any_name();
+    // auto prepostprocessor = ov::preprocess::PrePostProcessor(cnnNetwork).
+    //                 input(ov::preprocess::InputInfo().
+    //                     tensor(ov::preprocess::InputTensorInfo().
+    //                         set_element_type(ov::element::u8).
+    //                         set_layout({"NCHW"})));
+    // input_blob_name_ = cnnNetwork->input().get_any_name();
 
-    // InferenceEngine::OutputsDataMap out = cnnNetwork.getOutputsInfo();
-    ov::OutputVector out = cnnNetwork->outputs();
-    for (auto&& item : out) {
-        // item.second->setPrecision(InferenceEngine::Precision::FP32);
-        // output_blobs_names_.push_back(item.first);
-        item.get_names();
-        prepostprocessor.
-            output(ov::preprocess::OutputInfo(*item.get_names().begin()).
-                tensor(ov::preprocess::OutputTensorInfo().
-                    set_element_type(ov::element::f32)));
-        output_blobs_names_.push_back(item.get_any_name());// ???
+    ov::preprocess::PrePostProcessor proc(cnnNetwork);
+    ov::preprocess::InputInfo& input_info = proc.input();
+    input_info.tensor().set_element_type(ov::element::f32).set_layout({"NCHW"});
+    input_blob_name_ = cnnNetwork->input().get_any_name();
+    ov::OutputVector outputs = cnnNetwork->outputs();
+    for (auto&& item : outputs) {
+        proc.output(*item.get_names().begin()).tensor().set_element_type(ov::element::f32);
+        output_blobs_names_.push_back(item.get_any_name());
     }
+    cnnNetwork = proc.build();
 
     try {
         // executable_network_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName);
@@ -70,7 +70,7 @@ void CnnDLSDKBase::Load() {
             // {{InferenceEngine::PluginConfigParams::KEY_DYN_BATCH_ENABLED, InferenceEngine::PluginConfigParams::NO}});
         const ov::Layout layout_nchw{"NCHW"};
         ov::Shape input_shape = cnnNetwork->input().get_shape();
-        input_shape[ov::layout::batch(layout_nchw)] = 1;
+        input_shape[ov::layout::batch_idx(layout_nchw)] = 1;
         cnnNetwork->reshape({{cnnNetwork->input().get_any_name(), input_shape}});
         executable_network_ = config_.ie.compile_model(cnnNetwork, config_.deviceName);
     }
@@ -97,12 +97,12 @@ void CnnDLSDKBase::InferBatch(
         }
 
         // if (config_.max_batch_size != 1)
-        //     infer_request_.SetBatch(current_batch_size);// ???
+        //     infer_request_.SetBatch(current_batch_size);
         // infer_request_.Infer();
         infer_request_.infer();
 
         // InferenceEngine::BlobMap blobs;
-        std::map<std::string, ov::runtime::Tensor> blobs;// ???
+        std::map<std::string, ov::runtime::Tensor> blobs;
 
         for (const auto& name : output_blobs_names_)  {
             // blobs[name] = infer_request_.GetBlob(name);

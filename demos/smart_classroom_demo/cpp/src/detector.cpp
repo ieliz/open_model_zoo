@@ -13,6 +13,8 @@
 
 #include <ngraph/ngraph.hpp>
 
+#include "openvino/openvino.hpp"
+
 #define SSD_EMPTY_DETECTIONS_INDICATOR -1.0
 
 using namespace detection;
@@ -63,7 +65,7 @@ void FaceDetection::enqueue(const cv::Mat &frame) {
     height_ = static_cast<float>(frame.rows);
 
     // InferenceEngine::Blob::Ptr inputBlob = request->GetBlob(input_name_);
-    ov::runtime::Tensor inputTensor = request->get_input_tensor();// ??? input_name_ ???
+    ov::runtime::Tensor inputTensor = request->get_tensor(input_name_);
 
     // matToBlob(frame, inputBlob);
     matToTensor(frame, inputTensor);
@@ -78,8 +80,8 @@ FaceDetection::FaceDetection(const DetectorConfig& config) :
     auto cnnNetwork = config.ie.read_model(config.path_to_model);
 
     // InferenceEngine::InputsDataMap inputInfo(cnnNetwork.getInputsInfo());
-    ov::OutputVector inputInfo = cnnNetwork->inputs();
-    if (inputInfo.size() != 1) {
+    ov::OutputVector inputs_info = cnnNetwork->inputs();
+    if (inputs_info.size() != 1) {
         throw std::runtime_error("Face Detection network should have only one input");
     }
 
@@ -94,52 +96,62 @@ FaceDetection::FaceDetection(const DetectorConfig& config) :
     // input_shapes[inputInfo.begin()->first] = input_dims;
     // cnnNetwork.reshape(input_shapes);
 
+    ov::preprocess::PrePostProcessor proc(cnnNetwork);
+    ov::preprocess::InputInfo& input_info = proc.input();
+    input_info.tensor().set_element_type(ov::element::u8).set_layout({ "NCHW" });
+
+    ov::Output<ov::Node> _input = cnnNetwork->input();
+    ov::Shape input_dims = _input.get_shape();
+    input_dims[2] = config_.input_h;
+    input_dims[3] = config_.input_w;
+    std::map<std::string, ov::PartialShape> input_shapes;
+    input_shapes[_input.get_any_name()] = input_dims;
+    cnnNetwork->reshape(input_shapes);
+
     // InferenceEngine::OutputsDataMap outputInfo(cnnNetwork.getOutputsInfo());
     // if (outputInfo.size() != 1) {
     //     throw std::runtime_error("Face Detection network should have only one output");
     // }
+    ov::OutputVector outputs_info = cnnNetwork->outputs();
+    if (outputs_info.size() != 1) {
+        throw std::runtime_error("Face Detection network should have only one output");
+    }
     // InferenceEngine::DataPtr& _output = outputInfo.begin()->second;
     // output_name_ = outputInfo.begin()->first;
+    ov::Output<ov::Node> _output = cnnNetwork->output();
+    output_name_ = _output.get_any_name();
 
     // const InferenceEngine::SizeVector outputDims = _output->getTensorDesc().getDims();
     // max_detections_count_ = outputDims[2];
-    // object_size_ = outputDims[3];
-    // if (object_size_ != 7) {
-    //     throw std::runtime_error("Face Detection network output layer should have 7 as a last dimension");
-    // }
-    // if (outputDims.size() != 4) {
-    //     throw std::runtime_error("Face Detection network output should have 4 dimensions, but had " +
-    //                           std::to_string(outputDims.size()));
-    // }
+     /*object_size_ = outputDims[3];
+     if (object_size_ != 7) {
+         throw std::runtime_error("Face Detection network output layer should have 7 as a last dimension");
+     }
+     if (outputDims.size() != 4) {
+         throw std::runtime_error("Face Detection network output should have 4 dimensions, but had " +
+                               std::to_string(outputDims.size()));
+     }*/
     // _output->setPrecision(InferenceEngine::Precision::FP32);
     // _output->setLayout(InferenceEngine::TensorDesc::getLayoutByDims(_output->getDims()));
+    ov::Shape outputDims = _output.get_shape();
+    max_detections_count_ = outputDims[2];
+    object_size_ = outputDims[3];
+    if (object_size_ != 7) {
+        throw std::runtime_error("Face Detection network output layer should have 7 as a last dimension");
+    }
+    if (outputDims.size() != 4) {
+        throw std::runtime_error("Face Detection network output should have 4 dimensions, but had " +
+            std::to_string(outputDims.size()));
+    }
+
+    ov::preprocess::OutputInfo& output_info = proc.output();
+    output_info.tensor().set_element_type(ov::element::f32);
 
     // input_name_ = inputInfo.begin()->first;
     // net_ = config_.ie.LoadNetwork(cnnNetwork, config_.deviceName);
 
     input_name_ = cnnNetwork->input().get_any_name();
-    // ov::OutputVector outputs = cnnNetwork->outputs();
-    ov::Shape input_shape = cnnNetwork->input().get_shape();
-    cnnNetwork->reshape({ {cnnNetwork->input().get_any_name(), input_shape} });
-    std::cout << "det" << std::endl;
-    // std::string outputName = cnnNetwork->output().get_any_name();
-
-    // cnnNetwork = ov::preprocess::PrePostProcessor().
-    //           input(ov::preprocess::InputInfo().
-    //               tensor(ov::preprocess::InputTensorInfo().
-    //                 set_element_type(ov::element::u8).
-    //                 set_layout({"NCHW"})));
-
-    auto prepostprocessor = ov::preprocess::PrePostProcessor().
-              input(ov::preprocess::InputInfo().
-                  tensor(ov::preprocess::InputTensorInfo().
-                    set_element_type(ov::element::u8).
-                    set_layout({"NCHW"}))).
-              output(ov::preprocess::OutputInfo().
-                  tensor(ov::preprocess::OutputTensorInfo().
-                    set_element_type(ov::element::f32)));
-
-    cnnNetwork = prepostprocessor.build(cnnNetwork);
+    cnnNetwork = proc.build();
     net_ = config_.ie.compile_model(cnnNetwork, config_.deviceName);
 
     logExecNetworkInfo(net_, config_.path_to_model, config_.deviceName, topoName);
@@ -150,7 +162,7 @@ DetectedObjects FaceDetection::fetchResults() {
     // InferenceEngine::LockedMemory<const void> outputMapped =
     //     InferenceEngine::as<InferenceEngine::MemoryBlob>(request->GetBlob(output_name_))->rmap();
     // const float *data = outputMapped.as<float *>();
-    const float* data = request->get_output_tensor().data<float>();
+    const float* data = request->get_tensor(output_name_).data<float>();
 
     for (int det_id = 0; det_id < max_detections_count_; ++det_id) {
         const int start_pos = det_id * object_size_;

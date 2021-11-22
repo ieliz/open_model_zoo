@@ -12,6 +12,8 @@
 
 #include "cnn.hpp"
 
+#include "openvino/openvino.hpp"
+
 namespace detection {
 
 struct DetectedObject {

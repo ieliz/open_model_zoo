@@ -23,6 +23,7 @@
 #include <iostream>
 
 #include <inference_engine.hpp>
+#include "openvino/openvino.hpp"
 #include "utils/slog.hpp"
 #include "utils/args_helper.hpp"
 
@@ -226,7 +227,8 @@ inline std::string fileNameNoExt(const std::string &filepath) {
     return filepath.substr(0, pos);
 }
 
-inline void logExecNetworkInfo(const InferenceEngine::ExecutableNetwork& execNetwork, const std::string& modelName,
+// inline void logExecNetworkInfo(const InferenceEngine::ExecutableNetwork& execNetwork, const std::string& modelName,
+inline void logExecNetworkInfo(const ov::runtime::ExecutableNetwork& execNetwork, const std::string& modelName,
     const std::string& deviceName, const std::string& modelType = "") {
     slog::info << "The " << modelType << (modelType.empty() ? "" : " ") << "model " << modelName << " is loaded to " << deviceName << slog::endl;
     std::set<std::string> devices;
@@ -238,10 +240,12 @@ inline void logExecNetworkInfo(const InferenceEngine::ExecutableNetwork& execNet
         for (const auto& device : devices) {
             try {
                 slog::info << "\tDevice: " << device << slog::endl;
-                std::string nstreams = execNetwork.GetConfig(device + "_THROUGHPUT_STREAMS").as<std::string>();
+                // std::string nstreams = execNetwork.GetConfig(device + "_THROUGHPUT_STREAMS").as<std::string>();
+                std::string nstreams = execNetwork.get_config(device + "_THROUGHPUT_STREAMS").as<std::string>();
                 slog::info << "\t\tNumber of streams: " << nstreams << slog::endl;
                 if (device == "CPU") {
-                    std::string nthreads = execNetwork.GetConfig("CPU_THREADS_NUM").as<std::string>();
+                    // std::string nthreads = execNetwork.GetConfig("CPU_THREADS_NUM").as<std::string>();
+                    std::string nthreads = execNetwork.get_config("CPU_THREADS_NUM").as<std::string>();
                     slog::info << "\t\tNumber of threads: " << (nthreads == "0" ? "AUTO" : nthreads) << slog::endl;
                 }
             }
