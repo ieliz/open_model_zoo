@@ -53,13 +53,11 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
         : BaseCnnDetection(config.is_async), config_(config) {
     topoName = "action detector";
     auto network = config.ie.read_model(config.path_to_model);
-    std::cout << "after_read_model" << std::endl;
     // network.setBatchSize(config.max_batch_size);
     const ov::Layout layout_nchw{ "NCHW" };
     ov::Shape input_shape = network->input().get_shape();
     input_shape[ov::layout::batch_idx(layout_nchw)] = config.max_batch_size;
     network->reshape({ {network->input().get_any_name(), input_shape} });
-    std::cout << "after_reshape" << std::endl;
     // InferenceEngine::InputsDataMap inputInfo(network.getInputsInfo());
     // if (inputInfo.size() != 1) {
     // replace before setBatchSize
@@ -67,7 +65,6 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
     if (inputInfo.size() != 1) {
         throw std::runtime_error("Action Detection network should have only one input");
     }
-    std::cout << "after_taking_inputs" << std::endl;
 /*
     InferenceEngine::InputInfo::Ptr inputInfoFirst = inputInfo.begin()->second;
     inputInfoFirst->setPrecision(InferenceEngine::Precision::U8);
@@ -86,33 +83,24 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
     input_name_ = inputInfo.begin()->first;
 */
 
-// ???
     input_name_ = network->input().get_any_name();
     ov::OutputVector outputs = network->outputs();
-    // shape via layout
     network_input_size_.height = network->input().get_shape()[2];
     network_input_size_.width = network->input().get_shape()[3];
     // std::string outputName = network->input().get_any_name();
-    std::cout << "after_getting_shapes" << std::endl;
 
     new_network_ = false;
 
-    std::cout << "ppp_ad" << std::endl;
     ov::preprocess::PrePostProcessor proc(network);
-    std::cout << "ppp_create" << std::endl;
     ov::preprocess::InputInfo& input_info = proc.input();
-    std::cout << "ppp_input" << std::endl;
     input_info.tensor().set_element_type(ov::element::u8).set_layout({"NCHW"});
-    std::cout << "ppp_adjustments" << std::endl;
 
     for (auto&& item : outputs) {
         proc.output(item.get_any_name()).tensor().set_element_type(ov::element::f32);
         new_network_ = item.get_any_name() == config_.new_loc_blob_name;
     }
-    std::cout << "after_outputs_loop" << std::endl;
     network = proc.build();
     net_ = config_.ie.compile_model(network, config_.deviceName);
-    std::cout << "after_building" << std::endl;
     logExecNetworkInfo(net_, config_.path_to_model, config_.deviceName, config_.model_type);
     const auto& head_anchors = new_network_ ? config_.new_anchors : config_.old_anchors;
     const int num_heads = head_anchors.size();
@@ -154,7 +142,6 @@ ActionDetection::ActionDetection(const ActionDetectorConfig& config)
     num_candidates_ = head_shift;
 
     binary_task_ = config_.num_action_classes == 2;
-    std::cout << "ppp_end_ad" << std::endl;
 }
 
 // std::vector<int> ieSizeToVector(const InferenceEngine::SizeVector& ie_output_dims) { // replace with ov::shape

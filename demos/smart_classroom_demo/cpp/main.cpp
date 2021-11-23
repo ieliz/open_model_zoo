@@ -843,7 +843,6 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-
                     for (const auto& action : tracked_actions) {
                         auto box_color = white_color;
                         std::string box_caption = "";
